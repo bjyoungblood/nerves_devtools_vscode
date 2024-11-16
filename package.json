@@ -1,0 +1,123 @@
+{
+  "name": "nerves-utils",
+  "displayName": "Nerves Utils",
+  "description": "Utilities for working with Nerves projects and devices in VS Code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.88.0",
+    "yarn": "^1.0.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "views": {
+      "nerves-utils": [
+        {
+          "id": "devices",
+          "name": "Devices"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nerves-utils",
+          "title": "Nerves Utils",
+          "icon": "resources/nerves-logo.png"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "nerves-utils.refresh-devices",
+          "when": "view == devices",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "nerves-utils.connect",
+          "when": "view == devices && viewItem == disconnected",
+          "group": "inline"
+        },
+        {
+          "command": "nerves-utils.disconnect",
+          "when": "view == devices && viewItem == connected",
+          "group": "inline"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "nerves-utils.run-on-device",
+        "title": "Nerves Utils: Run on device"
+      },
+      {
+        "command": "nerves-utils.refresh-devices",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nerves-utils.connect",
+        "title": "Connect",
+        "icon": "$(debug-start)",
+        "category": "Nerves Device"
+      },
+      {
+        "command": "nerves-utils.disconnect",
+        "title": "Disconnect",
+        "icon": "$(debug-disconnect)",
+        "category": "Nerves Device"
+      }
+    ],
+    "configuration": {
+      "title": "Nerves Utils",
+      "properties": {
+        "nerves-utils.sshIdentityFile": {
+          "title": "SSH Identity File",
+          "type": "string",
+          "description": "Path to the SSH identity file to use when connecting to devices. If not specified, SSH's defaults will be used instead.",
+          "default": "",
+          "scope": "machine-overridable"
+        },
+        "nerves-utils.sshPassword": {
+          "title": "SSH Password",
+          "type": "string",
+          "format": "password",
+          "scope": "machine-overridable"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "yarn run compile && yarn run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "18.x",
+    "@types/ssh2": "^1.15.0",
+    "@types/vscode": "^1.88.0",
+    "@vscode/test-cli": "^0.0.8",
+    "@vscode/test-electron": "^2.3.9",
+    "eslint": "^9.14.0",
+    "globals": "^15.12.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.14.0"
+  },
+  "dependencies": {
+    "bonjour-service": "^1.2.1",
+    "ssh2": "^1.15.0"
+  },
+  "packageManager": "yarn@1.22.22"
+}
