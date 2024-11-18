@@ -26,6 +26,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     });
 
     this.mdnsBrowser.on("up", (svc: Service) => {
+      console.log("discovered service:", svc);
       this.addDevice(
         svc.host,
         svc.host,
@@ -36,6 +37,7 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     });
 
     this.mdnsBrowser.on("down", (svc: Service) => {
+      console.log("service went down:", svc);
       const client = this.devices[svc.host];
       if (!client || client.type !== "mdns" || client.connected) return;
 
@@ -93,6 +95,8 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     const device = new Device(hostname, port, privateKeyPath, type);
     device.on("connectionState", () => this.emit("change"));
     device.on("alarms", () => this.emit("change"));
+    device.on("metadata", () => this.emit("change"));
+    device.on("telemetry", () => this.emit("change"));
     this.devices[key] = device;
     return device;
   }

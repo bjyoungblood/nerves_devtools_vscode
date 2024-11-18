@@ -21,24 +21,47 @@ interface DeviceEvent<E, T> {
   data: T;
 }
 
+interface TelemetryData {
+  uptime: string | null;
+  loadAverage: string | null;
+  cpuTemperature: number | null;
+  memory: {
+    usedMb: number;
+    totalMb: number;
+  } | null;
+}
+
+interface DeviceMetadata {
+  fwValid: boolean;
+  activePartition: string;
+  fwArchitecture: string;
+  fwPlatform: string;
+  fwProduct: string;
+  fwVersion: string;
+  fwUuid: string;
+}
+
 function isDeviceEvent<E, T>(v: unknown): v is DeviceEvent<E, T> {
   return !!v && typeof v === "object" && "event" in v && "data" in v;
 }
 
-interface DeviceEvents {
-  connectionState: [Device, ConnectionState];
+interface DeviceEventEmitterEvents {
   alarms: [Device, string[]];
+  metadata: [Device, DeviceMetadata];
+  telemetry: [Device, TelemetryData];
+  connectionState: [Device, ConnectionState];
 }
 
-export class Device extends EventEmitter<DeviceEvents> {
+export class Device extends EventEmitter<DeviceEventEmitterEvents> {
   #client: Client | null = null;
   #channel: Channel | null = null;
   #alarms: string[] = [];
+  #telemetry: TelemetryData | null = null;
+  #metadata: DeviceMetadata | null = null;
 
   private _connectionState: ConnectionState = "disconnected";
 
-  private _commandsInProgress: Record<string, (...args: unknown[]) => unknown> =
-    {};
+  private _inflight: Record<string, (...args: unknown[]) => unknown> = {};
 
   constructor(
     public readonly hostname: string,
@@ -65,6 +88,14 @@ export class Device extends EventEmitter<DeviceEvents> {
 
   public get alarms() {
     return this.#alarms;
+  }
+
+  public get metadata() {
+    return this.#metadata;
+  }
+
+  public get telemetry() {
+    return this.#telemetry;
   }
 
   public async connect() {
@@ -144,7 +175,7 @@ export class Device extends EventEmitter<DeviceEvents> {
         return reject(new Error("Channel not connected"));
       }
 
-      this._commandsInProgress[requestId] = resolve;
+      this._inflight[requestId] = resolve;
 
       this.#channel?.write(
         JSON.stringify({ cmd, payload, requestId }) + "\n",
@@ -168,14 +199,14 @@ export class Device extends EventEmitter<DeviceEvents> {
       console.info("Processing command: ", command);
 
       if (isCommandResponse(command)) {
-        const resolveFn = this._commandsInProgress[command.requestId];
+        const resolveFn = this._inflight[command.requestId];
         if (!resolveFn) {
           console.error("Received response for unknown request: ", command);
           return;
         } else {
           console.info("found request", command.requestId);
         }
-        delete this._commandsInProgress[command.requestId];
+        delete this._inflight[command.requestId];
         resolveFn(command);
         return;
       }
@@ -186,6 +217,14 @@ export class Device extends EventEmitter<DeviceEvents> {
             console.info("received alarms", command.data);
             this.#alarms = command.data as string[];
             this.emit("alarms", this, this.alarms);
+            break;
+          case "device_metadata":
+            this.#metadata = command.data as DeviceMetadata;
+            this.emit("metadata", this, this.#metadata);
+            break;
+          case "telemetry":
+            this.#telemetry = command.data as TelemetryData;
+            this.emit("telemetry", this, this.#telemetry);
             break;
         }
       }

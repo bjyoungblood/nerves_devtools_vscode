@@ -23,7 +23,22 @@ interface DeviceAlarmNode {
   label: string;
 }
 
-type DeviceTreeNode = DeviceNode | DeviceSubitemNode | DeviceAlarmNode;
+interface DeviceMetadataNode {
+  nodeType: "metadata";
+  label: string;
+}
+
+interface DeviceTelemetryNode {
+  nodeType: "telemetry";
+  label: string;
+}
+
+type DeviceTreeNode =
+  | DeviceNode
+  | DeviceSubitemNode
+  | DeviceAlarmNode
+  | DeviceMetadataNode
+  | DeviceTelemetryNode;
 
 class NervesDeviceTreeDataProvider implements TreeDataProvider<DeviceTreeNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<DeviceTreeNode | void> =
@@ -70,6 +85,9 @@ class NervesDeviceTreeDataProvider implements TreeDataProvider<DeviceTreeNode> {
       if (node.label.startsWith("Alarms") && node.device.alarms.length > 0) {
         treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       }
+      if (["Metadata", "Telemetry"].includes(node.label)) {
+        treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      }
     } else {
       treeItem = new TreeItem(node.label);
       treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
@@ -78,9 +96,13 @@ class NervesDeviceTreeDataProvider implements TreeDataProvider<DeviceTreeNode> {
     return treeItem;
   }
 
-  async getChildren(node?: DeviceTreeNode): Promise<DeviceTreeNode[]> {
-    console.log("getChildren", node);
+  getChildren(node?: DeviceTreeNode): DeviceTreeNode[] {
+    const children = this._getChildren(node);
+    console.log("children for", node, "are", children);
+    return children;
+  }
 
+  _getChildren(node?: DeviceTreeNode): DeviceTreeNode[] {
     if (!node) {
       return deviceManager.registeredDevices.map((key) => ({
         nodeType: "device",
@@ -93,20 +115,80 @@ class NervesDeviceTreeDataProvider implements TreeDataProvider<DeviceTreeNode> {
     }
 
     if (node.nodeType === "device" && node.device.connected) {
-      return [
-        {
-          nodeType: `deviceSubitem`,
-          label: `Alarms (${node.device.alarms.length})`,
-          device: node.device,
-        },
-      ];
+      return this.getDeviceChildren(node);
     }
 
-    if (node.nodeType === "deviceSubitem" && node.label.startsWith("Alarms")) {
+    if (node.nodeType === "deviceSubitem") {
+      return this.getSubitemChildren(node);
+    }
+
+    return [];
+  }
+
+  private getDeviceChildren(node: DeviceNode): DeviceTreeNode[] {
+    return [
+      {
+        nodeType: `deviceSubitem`,
+        label: `Alarms (${node.device.alarms.length})`,
+        device: node.device,
+      },
+      node.device.metadata
+        ? {
+            nodeType: `deviceSubitem`,
+            label: "Metadata",
+            device: node.device,
+          }
+        : null,
+      node.device.telemetry
+        ? {
+            nodeType: "deviceSubitem",
+            label: "Telemetry",
+            device: node.device,
+          }
+        : null,
+    ].filter((v) => v !== null) as DeviceSubitemNode[];
+  }
+
+  private getSubitemChildren(node: DeviceSubitemNode): DeviceTreeNode[] {
+    if (node.label.startsWith("Alarms")) {
       return node.device.alarms.map((alarm) => ({
         nodeType: "alarm",
         label: alarm,
       }));
+    }
+
+    if (node.label.startsWith("Metadata")) {
+      return [
+        `Active partition: ${node.device.metadata?.activePartition}`,
+        `Arch: ${node.device.metadata?.fwArchitecture}`,
+        `Platform: ${node.device.metadata?.fwPlatform}`,
+        `Product: ${node.device.metadata?.fwProduct}`,
+        `Version: ${node.device.metadata?.fwVersion}`,
+        `UUID: ${node.device.metadata?.fwUuid}`,
+      ].map((label) => ({ nodeType: "metadata", label }));
+    }
+
+    if (node.label.startsWith("Telemetry")) {
+      return [
+        `Uptime: ${node.device.telemetry?.uptime}`,
+        node.device.telemetry?.loadAverage
+          ? `Load Average: ${node.device.telemetry?.loadAverage}`
+          : null,
+        node.device.telemetry?.cpuTemperature
+          ? `CPU Temp: ${node.device.telemetry?.cpuTemperature} °C`
+          : null,
+        node.device.telemetry?.memory
+          ? `Memory: ${node.device.telemetry.memory.usedMb} / ${
+              node.device.telemetry.memory.totalMb
+            }MB (${Math.round(
+              (node.device.telemetry.memory.usedMb /
+                node.device.telemetry.memory.totalMb) *
+                100,
+            )}% used)`
+          : null,
+      ]
+        .filter((v) => v !== null)
+        .map((label) => ({ nodeType: "telemetry", label }));
     }
 
     return [];
