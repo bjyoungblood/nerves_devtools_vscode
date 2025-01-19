@@ -1,8 +1,39 @@
 {
-  "name": "nerves-utils",
-  "displayName": "Nerves Utils",
-  "description": "Utilities for working with Nerves projects and devices in VS Code",
+  "name": "nerves-devtools",
   "version": "0.0.1",
+  "displayName": "Nerves Devtools",
+  "description": "Utilities for working with Nerves projects and devices in VS Code",
+  "packageManager": "yarn@1.22.22",
+  "repository": "github:bjyoungblood/vscode-nerves-devtools",
+  "license": "Apache-2.0",
+  "scripts": {
+    "vscode:prepublish": "yarn run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "yarn run compile && yarn run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "dependencies": {
+    "phoenix": "^1.7.18",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "18.x",
+    "@types/phoenix": "^1.6.6",
+    "@types/vscode": "^1.88.0",
+    "@types/ws": "^8.5.13",
+    "@vscode/test-cli": "^0.0.8",
+    "@vscode/test-electron": "^2.3.9",
+    "@vscode/vsce": "^3.2.1",
+    "eslint": "^9.14.0",
+    "globals": "^15.12.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.14.0"
+  },
   "engines": {
     "vscode": "^1.88.0",
     "yarn": "^1.0.0"
@@ -13,111 +44,127 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
-    "views": {
-      "nerves-utils": [
-        {
-          "id": "devices",
-          "name": "Devices"
-        }
-      ]
-    },
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "nerves-utils",
-          "title": "Nerves Utils",
+          "id": "nerves-devtools",
+          "title": "Nerves Devtools",
           "icon": "resources/nerves-logo.png"
         }
       ]
     },
+    "views": {
+      "nerves-devtools": [
+        {
+          "id": "nerves-devtools.devices",
+          "name": "Devices"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "nerves-devtools.devices",
+        "contents": "No devices found.\n[Add device](command:nerves-devtools.add-device)"
+      }
+    ],
     "menus": {
       "view/title": [
         {
-          "command": "nerves-utils.refresh-devices",
-          "when": "view == devices",
+          "command": "nerves-devtools.add-device",
+          "when": "view == nerves-devtools.devices",
+          "group": "navigation"
+        },
+        {
+          "command": "nerves-devtools.refresh-devices",
+          "when": "view == nerves-devtools.devices",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "nerves-utils.connect",
-          "when": "view == devices && viewItem == disconnected",
-          "group": "inline"
+          "command": "nerves-devtools.connect",
+          "when": "view == nerves-devtools.devices && viewItem == closed",
+          "group": "inline@1"
         },
         {
-          "command": "nerves-utils.disconnect",
-          "when": "view == devices && viewItem == connected",
-          "group": "inline"
+          "command": "nerves-devtools.disconnect",
+          "when": "view == nerves-devtools.devices && viewItem != closed",
+          "group": "inline@1"
+        },
+        {
+          "command": "nerves-devtools.edit-device",
+          "when": "view == nerves-devtools.devices",
+          "group": "inline@2"
+        },
+        {
+          "command": "nerves-devtools.delete-device",
+          "when": "view == nerves-devtools.devices",
+          "group": "inline@3"
+        },
+        {
+          "command": "nerves-devtools.copy",
+          "when": "view == nerves-devtools.devices && viewItem == metadata",
+          "group": "inline@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "nerves-devtools.copy",
+          "when": "false"
         }
       ]
     },
     "commands": [
       {
-        "command": "nerves-utils.run-on-device",
-        "title": "Nerves Utils: Run on device"
+        "command": "nerves-devtools.run-on-device",
+        "title": "Run on device",
+        "category": "Nerves devices"
       },
       {
-        "command": "nerves-utils.refresh-devices",
+        "command": "nerves-devtools.add-device",
+        "title": "Add Device",
+        "icon": "$(add)",
+        "category": "Nerves devices"
+      },
+      {
+        "command": "nerves-devtools.edit-device",
+        "title": "Edit Device",
+        "icon": "$(edit)",
+        "category": "Nerves devices"
+      },
+      {
+        "command": "nerves-devtools.delete-device",
+        "title": "Delete Device",
+        "icon": "$(trash)",
+        "category": "Nerves devices"
+      },
+      {
+        "command": "nerves-devtools.refresh-devices",
         "title": "Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Nerves devices"
       },
       {
-        "command": "nerves-utils.connect",
+        "command": "nerves-devtools.connect",
         "title": "Connect",
-        "icon": "$(debug-start)",
-        "category": "Nerves Device"
+        "icon": "$(vm-connect)",
+        "category": "Nerves devices"
       },
       {
-        "command": "nerves-utils.disconnect",
+        "command": "nerves-devtools.disconnect",
         "title": "Disconnect",
         "icon": "$(debug-disconnect)",
-        "category": "Nerves Device"
+        "category": "Nerves devices"
+      },
+      {
+        "command": "nerves-devtools.copy",
+        "title": "Copy",
+        "icon": "$(copy)"
       }
     ],
     "configuration": {
-      "title": "Nerves Utils",
-      "properties": {
-        "nerves-utils.sshIdentityFile": {
-          "title": "SSH Identity File",
-          "type": "string",
-          "description": "Path to the SSH identity file to use when connecting to devices. If not specified, SSH's defaults will be used instead.",
-          "default": "",
-          "scope": "machine-overridable"
-        },
-        "nerves-utils.sshPassword": {
-          "title": "SSH Password",
-          "type": "string",
-          "format": "password",
-          "scope": "machine-overridable"
-        }
-      }
+      "title": "Nerves Devtools",
+      "properties": {}
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "yarn run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "yarn run compile && yarn run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.15.0",
-    "@types/mocha": "^10.0.6",
-    "@types/node": "18.x",
-    "@types/ssh2": "^1.15.0",
-    "@types/vscode": "^1.88.0",
-    "@vscode/test-cli": "^0.0.8",
-    "@vscode/test-electron": "^2.3.9",
-    "eslint": "^9.14.0",
-    "globals": "^15.12.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.4.5",
-    "typescript-eslint": "^8.14.0"
-  },
-  "dependencies": {
-    "bonjour-service": "^1.2.1",
-    "ssh2": "^1.15.0"
-  },
-  "packageManager": "yarn@1.22.22"
+  }
 }

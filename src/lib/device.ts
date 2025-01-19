@@ -1,27 +1,24 @@
-import { Channel, Client } from "ssh2";
 import EventEmitter from "events";
-import { randomUUID } from "crypto";
-import { awaitTimeout } from "./util";
+import { window } from "vscode";
+import { Socket, Channel, ConnectionState } from "phoenix";
+import { ErrorEvent, WebSocket } from "ws";
 
-export type RegistrationType = "mdns" | "manual";
-export type ConnectionState = "connected" | "connecting" | "disconnected";
+import { setTimeoutAsync } from "./util";
 
-interface CommandResponse<T> {
-  status: "ok" | "error";
-  result: T;
-  requestId: string;
+export interface LogEvent {
+  time: string;
+  level: string;
+  message: string;
+  metadata: Record<string, any>;
 }
 
-function isCommandResponse<T>(v: unknown): v is CommandResponse<T> {
-  return !!v && typeof v === "object" && "status" in v && "result" in v;
+export interface DeviceExport {
+  id: string;
+  host: string;
+  label?: string | null;
 }
 
-interface DeviceEvent<E, T> {
-  event: E;
-  data: T;
-}
-
-interface TelemetryData {
+export interface TelemetryData {
   uptime: string | null;
   loadAverage: string | null;
   cpuTemperature: number | null;
@@ -31,7 +28,7 @@ interface TelemetryData {
   } | null;
 }
 
-interface DeviceMetadata {
+export interface DeviceMetadata {
   fwValid: boolean;
   activePartition: string;
   fwArchitecture: string;
@@ -41,197 +38,239 @@ interface DeviceMetadata {
   fwUuid: string;
 }
 
-function isDeviceEvent<E, T>(v: unknown): v is DeviceEvent<E, T> {
-  return !!v && typeof v === "object" && "event" in v && "data" in v;
-}
-
 interface DeviceEventEmitterEvents {
   alarms: [Device, string[]];
   metadata: [Device, DeviceMetadata];
   telemetry: [Device, TelemetryData];
-  connectionState: [Device, ConnectionState];
+  connectionState: [Device, ConnectionState | "error"];
+  dirtyModules: [Device, string[]];
+  log: [Device, LogEvent];
 }
 
 export class Device extends EventEmitter<DeviceEventEmitterEvents> {
-  #client: Client | null = null;
-  #channel: Channel | null = null;
-  #alarms: string[] = [];
-  #telemetry: TelemetryData | null = null;
-  #metadata: DeviceMetadata | null = null;
+  private socket: Socket;
+  private codeChannel: Channel | null = null;
+  private logChannel: Channel | null = null;
+  private telemetryChannel: Channel | null = null;
 
-  private _connectionState: ConnectionState = "disconnected";
+  private _label: string;
+  private _connectError: boolean = false;
 
-  private _inflight: Record<string, (...args: unknown[]) => unknown> = {};
+  private _alarms: string[] = [];
+  private _telemetry: TelemetryData | null = null;
+  private _metadata: DeviceMetadata | null = null;
+  private _dirtyModules: string[] = [];
 
   constructor(
-    public readonly hostname: string,
-    public readonly port: number,
-    private privateKeyPath: string,
-    public readonly type: RegistrationType = "manual",
+    private readonly _id: string,
+    private _host: string,
+    label?: string | null,
   ) {
     super({ captureRejections: true });
+
+    this._label = label || this._host;
+
+    this.socket = this.configureSocket();
   }
 
-  public get connectionState(): ConnectionState {
-    return this._connectionState;
+  public get connectionState(): ConnectionState | "error" {
+    const cs = this.socket?.connectionState() ?? "closed";
+    if (cs === "closed") {
+      return this._connectError ? "error" : "closed";
+    }
+    return cs;
   }
 
-  private set connectionState(state: ConnectionState) {
-    this._connectionState = state;
-    console.info(`${this.hostname} ssh connection state: ${state}`);
-    this.emit("connectionState", this, state);
+  public get id() {
+    return this._id;
+  }
+
+  public get host() {
+    return this._host;
+  }
+
+  public get label() {
+    return this._label;
   }
 
   public get connected() {
-    return this._connectionState === "connected";
+    return this.connectionState === "open";
   }
 
   public get alarms() {
-    return this.#alarms;
+    return this._alarms;
   }
 
   public get metadata() {
-    return this.#metadata;
+    return this._metadata;
   }
 
   public get telemetry() {
-    return this.#telemetry;
+    return this._telemetry;
   }
 
-  public async connect() {
-    // if (this.#client && this.#client.)
-    // const privateKey = await readFile(this.privateKeyPath);
+  public get dirtyModules() {
+    return this._dirtyModules;
+  }
 
-    this._connectionState = "connecting";
+  public export(): DeviceExport {
+    return {
+      id: this._id,
+      host: this._host,
+      label: this._label,
+    };
+  }
 
-    return new Promise<void>((resolve, reject) => {
-      this.#client = new Client();
-
-      this.#client.connect({
-        username: "nerves",
-        host: this.hostname,
-        port: this.port,
-        agent: process.env.SSH_AUTH_SOCK,
-        // privateKey,
+  public async connect(timeout = 10000) {
+    const promise = new Promise<void>((resolve, reject) => {
+      let done = false;
+      const dispose = () => {
+        done = true;
+        this.socket.off([onOpen, onClose, onError]);
+      };
+      const onOpen = this.socket.onOpen(() => {
+        if (done) return;
+        resolve();
+        dispose();
       });
-
-      this.#client.on("error", (msg) => {
-        console.error("SSH error: ", msg);
-        this._connectionState = "disconnected";
-        this.#client?.destroy();
-        this.#client = null;
-        reject(msg);
+      const onClose = this.socket.onClose((e) => {
+        console.error("Socket connection closed unexpectedly", e);
+        if (done) return;
+        reject(new Error("Connection closed"));
+        dispose();
       });
+      const onError = this.socket.onError(((e: ErrorEvent) => {
+        console.error("Socket connection error", e);
+        if (done) return;
+        let message = `Failed to connect to ${this._label}`;
+        if (typeof e.error === "object" && e.error?.code) {
+          message += `: ${e.error.code}`;
+        }
+        window.showErrorMessage(message);
+        reject(new Error(e.message));
+        dispose();
+      }) as any);
+      this.socket?.connect();
+    });
 
-      this.#client.on("end", () => {
-        this.#client = null;
-        this._connectionState = "disconnected";
-      });
+    return Promise.race([promise, setTimeoutAsync(timeout, "reject")]);
+  }
 
-      this.#client.on("ready", async () => {
-        this.#client!.subsys("nerves_vscode", (err, channel) => {
-          if (err) {
-            reject(err);
-            return;
-          }
+  public async compileCode(code: string, filename?: string) {
+    return new Promise<{ status: "ok" | "error"; diagnostics: string }>(
+      (resolve, reject) => {
+        if (!this.codeChannel) {
+          return reject(new Error("Channel not connected"));
+        }
 
-          this.#channel = channel;
-          this._connectionState = "connected";
-
-          this.#channel.on("data", this.handleData.bind(this));
-
-          this.#channel.on("end", () => {
-            this.#channel = null;
-            this._connectionState = "disconnected";
-            this.#client?.end();
+        this.codeChannel
+          .push("compile_code", { code, filename })
+          .receive("ok", ({ diagnostics, dirtyModules }) => {
+            this._dirtyModules = dirtyModules;
+            this.emit("dirtyModules", this, dirtyModules);
+            resolve({ status: "ok", diagnostics });
+          })
+          .receive("error", ({ diagnostics, dirtyModules }) => {
+            this._dirtyModules = dirtyModules;
+            this.emit("dirtyModules", this, dirtyModules);
+            resolve({ status: "error", diagnostics });
           });
-
-          resolve();
-        });
-      });
-    });
-  }
-
-  public async sendCommand(
-    cmd: "exec",
-    payload: { data: string },
-  ): Promise<CommandResponse<string>>;
-
-  public async sendCommand(
-    cmd: "compile_code",
-    payload: { code: string },
-  ): Promise<CommandResponse<string | string[]>>;
-
-  public async sendCommand(
-    cmd: string,
-    payload: unknown,
-    timeout: number = 10000,
-  ) {
-    if (!this.connected) await this.connect();
-
-    const requestId = randomUUID();
-    const req = new Promise((resolve, reject) => {
-      if (!this.#channel) {
-        return reject(new Error("Channel not connected"));
-      }
-
-      this._inflight[requestId] = resolve;
-
-      this.#channel?.write(
-        JSON.stringify({ cmd, payload, requestId }) + "\n",
-        (err) => err && reject(err),
-      );
-    });
-
-    return Promise.race([req, awaitTimeout(timeout, "reject")]);
+      },
+    );
   }
 
   public async disconnect() {
-    if (!this.connected) return;
-
-    this.#client!.end();
+    return new Promise<void>((resolve) => {
+      this.socket?.disconnect(() => {
+        this.resetState();
+        resolve();
+      });
+    });
   }
 
-  private handleData(data: string) {
-    try {
-      const command = JSON.parse(data);
+  public async update({ host, label }: { host?: string; label?: string }) {
+    if (host) this._host = host;
+    if (label) this._label = label;
 
-      console.info("Processing command: ", command);
+    const reconnect = this.connectionState !== "closed";
+    await this.disconnect();
+    this.socket = this.configureSocket();
+    if (reconnect) await this.connect();
+    this.emit("connectionState", this, this.connectionState);
+  }
 
-      if (isCommandResponse(command)) {
-        const resolveFn = this._inflight[command.requestId];
-        if (!resolveFn) {
-          console.error("Received response for unknown request: ", command);
-          return;
-        } else {
-          console.info("found request", command.requestId);
-        }
-        delete this._inflight[command.requestId];
-        resolveFn(command);
-        return;
-      }
-
-      if (isDeviceEvent(command)) {
-        switch (command.event) {
-          case "alarms":
-            console.info("received alarms", command.data);
-            this.#alarms = command.data as string[];
-            this.emit("alarms", this, this.alarms);
-            break;
-          case "device_metadata":
-            this.#metadata = command.data as DeviceMetadata;
-            this.emit("metadata", this, this.#metadata);
-            break;
-          case "telemetry":
-            this.#telemetry = command.data as TelemetryData;
-            this.emit("telemetry", this, this.#telemetry);
-            break;
-        }
-      }
-
-      // TODO: check for invalid command errors and other events
-    } catch {
-      console.error("Invalid JSON data received from device: ", data);
+  private afterJoin(channel: string, message: any) {
+    console.log("after join", channel, message);
+    switch (channel) {
+      case "code":
+        this._dirtyModules = message.dirtyModules;
+        this.emit("dirtyModules", this, this._dirtyModules);
+        break;
+      case "telemetry":
+        this._metadata = message as DeviceMetadata;
+        this.emit("metadata", this, this._metadata);
+        break;
     }
+  }
+
+  private handleAlarms({ alarms }: { alarms: string[] }) {
+    this._alarms = alarms;
+    this.emit("alarms", this, alarms);
+  }
+
+  private handleTelemetry(telemetry: TelemetryData) {
+    console.log("handleTelemetry", telemetry);
+    this._telemetry = telemetry;
+    this.emit("telemetry", this, telemetry);
+  }
+
+  private handleDirtyModules({ modules }: { modules: string[] }) {
+    this._dirtyModules = modules;
+    this.emit("dirtyModules", this, modules);
+  }
+
+  private resetState() {
+    this._alarms = [];
+    this._metadata = null;
+    this._telemetry = null;
+    this._dirtyModules = [];
+  }
+
+  private configureSocket() {
+    const socket = new Socket(`http://${this._host}`, {
+      transport: WebSocket,
+    });
+
+    socket.onOpen(() => {
+      this.emit("connectionState", this, this.connectionState);
+      this._connectError = false;
+    });
+    socket.onError(() => {
+      this.emit("connectionState", this, this.connectionState);
+      this._connectError = true;
+    });
+    socket.onClose(() => {
+      this.emit("connectionState", this, this.connectionState);
+    });
+
+    this.codeChannel = socket.channel("code", {});
+    this.codeChannel.join().receive("ok", this.afterJoin.bind(this, "code"));
+    this.codeChannel.on("dirty_modules", this.handleDirtyModules.bind(this));
+
+    // this.logChannel = socket.channel("logs", {});
+    // this.logChannel.join();
+    // this.logChannel.on("log", (message: LogEvent) => {
+    //   console.log("log event", message);
+    //   this.emit("log", this, message);
+    // });
+
+    this.telemetryChannel = socket.channel("telemetry", {});
+    this.telemetryChannel
+      .join()
+      .receive("ok", this.afterJoin.bind(this, "telemetry"));
+    this.telemetryChannel.on("telemetry", this.handleTelemetry.bind(this));
+    this.telemetryChannel.on("alarms", this.handleAlarms.bind(this));
+
+    return socket;
   }
 }

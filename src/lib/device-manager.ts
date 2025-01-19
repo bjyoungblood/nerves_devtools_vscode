@@ -1,105 +1,78 @@
-import Bonjour, { Browser, type Service } from "bonjour-service";
+import { Disposable } from "vscode";
 import EventEmitter from "events";
+import { randomUUID } from "crypto";
 
-import { Device, RegistrationType } from "./device";
+import { Device, DeviceExport } from "./device";
 
 interface DeviceManagerEvents {
   change: [];
 }
 
-export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
-  private mdnsBrowser: Browser | null = null;
-  private devices: { [key: string]: Device } = {};
+export class DeviceManager
+  extends EventEmitter<DeviceManagerEvents>
+  implements Disposable
+{
+  private devices: { [id: string]: Device } = {};
 
-  get registeredDevices() {
-    return Object.keys(this.devices);
-  }
-
-  constructor() {
+  constructor(importDevices: DeviceExport[] = []) {
     super({ captureRejections: true });
-
-    const bonjour = new Bonjour();
-    this.mdnsBrowser = bonjour.find({
-      type: "ssh",
-      protocol: "tcp",
-      txt: { ssh_subsystem_vscode: "1" },
-    });
-
-    this.mdnsBrowser.on("up", (svc: Service) => {
-      console.log("discovered service:", svc);
-      this.addDevice(
-        svc.host,
-        svc.host,
-        svc.port,
-        "/Users/benyoungblood/.ssh/id_rsa",
-        "mdns",
-      );
-    });
-
-    this.mdnsBrowser.on("down", (svc: Service) => {
-      console.log("service went down:", svc);
-      const client = this.devices[svc.host];
-      if (!client || client.type !== "mdns" || client.connected) return;
-
-      delete this.devices[svc.host];
-    });
+    for (const device of importDevices) {
+      this.addDevice(device.host, device.label);
+    }
   }
 
-  public async connect(
-    key: string,
-    hostname: string,
-    port: number,
-    privateKeyPath: string,
-  ) {
-    if (this.devices[key] && this.devices[key].connected)
-      return this.devices[key];
-
-    const device = this.addDevice(
-      key,
-      hostname,
-      port,
-      privateKeyPath,
-      "manual",
-    );
-    await device.connect();
-
-    return device;
+  async dispose() {
+    this.disconnectAll();
+    this.removeAllListeners();
   }
 
-  public getDevice(key: string): Device | null {
-    return this.devices[key] || null;
+  public getDevices(): Device[] {
+    return Object.values(this.devices);
   }
 
-  public async disconnect(key: string) {
-    if (!this.devices[key]) {
+  public getDevice(id: string): Device | null {
+    return this.devices[id] || null;
+  }
+
+  public async disconnect(id: string) {
+    if (!this.devices[id]) {
       return;
     }
 
-    await this.devices[key].disconnect();
+    await this.devices[id].disconnect();
   }
 
   public async disconnectAll() {
-    for (const key in this.devices) {
-      await this.disconnect(key);
+    for (const id in this.devices) {
+      await this.disconnect(id);
     }
     this.emit("change");
   }
 
-  private addDevice(
-    key: string,
-    hostname: string,
-    port: number,
-    privateKeyPath: string,
-    type: RegistrationType,
-  ) {
-    const device = new Device(hostname, port, privateKeyPath, type);
+  public addDevice(host: string, label?: string | null) {
+    const id = randomUUID();
+    return this.importDevice({ id, host, label });
+  }
+
+  public async removeDevice(id: string) {
+    if (!this.devices[id]) {
+      return;
+    }
+
+    await this.devices[id].disconnect();
+    delete this.devices[id];
+
+    this.emit("change");
+  }
+
+  private importDevice({ id, host, label }: DeviceExport) {
+    const device = new Device(id, host, label);
+    this.devices[id] = device;
     device.on("connectionState", () => this.emit("change"));
     device.on("alarms", () => this.emit("change"));
+    device.on("dirtyModules", () => this.emit("change"));
     device.on("metadata", () => this.emit("change"));
     device.on("telemetry", () => this.emit("change"));
-    this.devices[key] = device;
-    return device;
+    this.emit("change");
   }
 }
-
-export const deviceManager = new DeviceManager();

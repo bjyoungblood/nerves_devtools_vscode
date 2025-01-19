@@ -1,155 +1,115 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import * as vscode from "vscode";
-import { basename } from "node:path";
+
 import { stripVTControlCharacters } from "node:util";
+import {
+  ExtensionContext,
+  OutputChannel,
+  ProgressLocation,
+  QuickPick,
+  QuickPickItem,
+  TextEditor,
+  commands,
+  window,
+  workspace,
+} from "vscode";
 
-import { deviceManager } from "../lib/device-manager";
+import { DeviceManager } from "../lib/device-manager";
+import { pickDevice } from "../lib/pick-device";
 
-const out = vscode.window.createOutputChannel("Run on Nerves Device");
-const qp = vscode.window.createQuickPick();
-qp.canSelectMany = false;
-qp.title = "Enter Nerves device hostname or IP";
+interface DeviceQuickPickItem extends QuickPickItem {
+  id: string;
+}
 
-// async function privateKeyPath(): Promise<string | null> {
-//   const config = vscode.workspace.getConfiguration("nerves-utils");
-//   if (!config.has("sshIdentityFile")) {
-//     return null;
-//   }
+let out: OutputChannel;
+let qp: QuickPick<DeviceQuickPickItem>;
 
-//   let identityFile = config.get<string>("sshIdentityFile", "");
-//   if (!identityFile) {
-//     return null;
-//   }
-
-//   if (identityFile.startsWith("~")) {
-//     identityFile = join(homedir(), identityFile.replace("~", ""));
-//   }
-
-//   return realpath(identityFile);
-// }
-
-export async function runOnDevice(
-  context: vscode.ExtensionContext,
-  editor: vscode.TextEditor,
+async function runOnDevice(
+  context: ExtensionContext,
+  editor: TextEditor,
+  deviceManager: DeviceManager,
 ) {
   out.clear();
 
-  vscode.window.visibleTextEditors.find(
-    (v) => v.document.fileName === out.name,
-  );
-
-  console.log(vscode.window.visibleTextEditors);
+  window.visibleTextEditors.find((v) => v.document.fileName === out.name);
 
   if (editor.document.languageId !== "elixir") {
-    vscode.window.showErrorMessage(
-      "This command only works with Elixir source files",
-    );
+    window.showErrorMessage("This command only works with Elixir source files");
     return;
   }
 
-  const quickPickItems = deviceManager.registeredDevices.map(
-    (deviceName): vscode.QuickPickItem => {
-      return {
-        label: deviceName,
-        picked: deviceName === context.workspaceState.get("lastHost"),
-      };
-    },
-  );
-
-  qp.items = quickPickItems;
-  qp.activeItems = quickPickItems.filter((item) => item.picked);
-
-  const deviceName = await new Promise<string | null>((resolve) => {
-    let done = false;
-    qp.onDidHide(() => {
-      if (done) return;
-      done = true;
-      resolve(null);
-    });
-    qp.onDidAccept(() => {
-      if (done) return;
-      done = true;
-      resolve(qp.selectedItems[0].label);
-      qp.hide();
-    });
-
-    qp.show();
-  });
-
-  console.log(deviceName);
-
-  if (!deviceName) {
+  const lastHost = context.workspaceState.get<string>("lastHost");
+  const deviceId = await pickDevice(deviceManager, lastHost);
+  if (!deviceId) {
     return;
   }
 
-  context.workspaceState.update("lastHost", deviceName);
+  const device = deviceManager.getDevice(deviceId);
+  if (!device) {
+    return;
+  }
 
-  const editorFileName = basename(editor.document.fileName);
+  context.workspaceState.update("lastHost", deviceId);
+
+  let editorFileName: string | null = null;
+  if (!editor.document.isUntitled) {
+    editorFileName = workspace.asRelativePath(editor.document.uri);
+  }
 
   const code = editor.document.getText();
 
-  vscode.window.withProgress(
+  window.withProgress(
     {
-      location: vscode.ProgressLocation.Notification,
-      title: `Connecting to ${deviceName}...`,
+      location: ProgressLocation.Notification,
+      title: `Connecting to ${device.label}...`,
     },
     async (notification) => {
       try {
-        const device = deviceManager.getDevice(deviceName)!;
+        const device = deviceManager.getDevice(deviceId)!;
         if (!device.connected) {
-          out.append(`Connecting to ${deviceName}...`);
+          out.append(`Connecting to ${device.label}...`);
           try {
             await device.connect();
             out.append(" done!\n");
           } catch (err) {
             out.append(" failed!\n");
-            if (err instanceof Error) {
-              out.appendLine(err.message);
-              if (err.stack) out.appendLine(err.stack);
-              vscode.window.showErrorMessage(err.message);
-            }
-            throw err;
+            console.error(err);
+            return;
           }
         } else {
-          out.appendLine(`Already connected to ${deviceName}`);
+          out.appendLine(`Already connected to ${device.label}`);
         }
 
+        out.appendLine(`Uploading ${editorFileName} to ${device.label}...`);
         notification.report({
-          message: `Uploading ${editorFileName} to ${deviceName}...`,
+          message: `Compiling ${editorFileName} on ${device.label}...`,
           increment: 50,
         });
 
-        out.appendLine(`Uploading ${editorFileName} to ${deviceName}...`);
-        notification.report({
-          message: `Compiling ${editorFileName} on ${deviceName}...`,
-        });
-
-        const { status, result } = await device.sendCommand("compile_code", {
-          code,
-        });
+        const { status, diagnostics } = await device.compileCode(code);
 
         if (status === "ok") {
           out.appendLine(`Compilation successful!`);
           showMessage(
             "info",
-            `${editorFileName} is compiled and loaded on ${deviceName}.`,
+            `${editorFileName} is compiled and loaded on ${device.label}.`,
             false,
           );
         } else {
           out.appendLine(`Compilation failed!`);
           showMessage(
             "error",
-            `${editorFileName} failed to compile on ${deviceName}. See output for diagnostics.`,
+            `${editorFileName} failed to compile on ${device.label}. See output for diagnostics.`,
           );
         }
 
-        if (Array.isArray(result)) {
-          result.forEach((line) =>
+        if (Array.isArray(diagnostics)) {
+          out.show();
+          diagnostics.forEach((line) =>
             out.appendLine(stripVTControlCharacters(line)),
           );
         } else {
-          out.appendLine(stripVTControlCharacters(result));
+          out.appendLine(stripVTControlCharacters(diagnostics));
         }
       } catch (err) {
         if (err instanceof Error) {
@@ -157,7 +117,7 @@ export async function runOnDevice(
         }
         showMessage(
           "error",
-          `${editorFileName} failed to compile on ${deviceName}. See output for diagnostics.`,
+          `${editorFileName} failed to compile on ${device.label}. See output for diagnostics.`,
         );
         throw err;
       }
@@ -173,12 +133,29 @@ function showMessage(
   let msg: Thenable<string | undefined>;
   const items = showOutput ? ["Show Output"] : [];
   if (type === "info") {
-    msg = vscode.window.showInformationMessage(message, ...items);
+    msg = window.showInformationMessage(message, ...items);
   } else {
-    msg = vscode.window.showErrorMessage(message, ...items);
+    msg = window.showErrorMessage(message, ...items);
   }
 
   msg.then((action) => {
     if (action === "Show Output") out.show();
   });
+}
+
+export default function register(
+  context: ExtensionContext,
+  deviceManager: DeviceManager,
+) {
+  out = window.createOutputChannel("Nerves Devtools: Run on Device");
+  qp = window.createQuickPick();
+  qp.canSelectMany = false;
+  qp.title = "Enter Nerves device hostname or IP";
+
+  const cmd = commands.registerTextEditorCommand(
+    "nerves-devtools.run-on-device",
+    (textEditor) => runOnDevice(context, textEditor, deviceManager),
+  );
+
+  return [out, qp, cmd];
 }

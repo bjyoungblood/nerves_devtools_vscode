@@ -1,3 +1,3 @@
 export function log(message: string, ...rest: unknown[]) {
-  console.log(`[nerves-utils] ${message}`, ...rest);
+  console.log(`[nerves-devtools] ${message}`, ...rest);
 }

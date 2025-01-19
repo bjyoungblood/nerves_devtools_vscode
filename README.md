@@ -1,3 +1,3 @@
-# Nerves Utils
+# Nerves Devtools
 
-Utilities for working with Nerves projects and devices in VS Code.
+VS Code dev tools for Nerves projects and devices.
