@@ -1,11 +1,12 @@
 {
-  "name": "nerves-devtools",
-  "version": "0.0.1",
+  "name": "nerves-devtools-vscode",
+  "version": "0.1.0",
   "displayName": "Nerves Devtools",
   "description": "Utilities for working with Nerves projects and devices in VS Code",
   "packageManager": "yarn@1.22.22",
   "repository": "github:bjyoungblood/vscode-nerves-devtools",
   "license": "Apache-2.0",
+  "publisher": "bjyoungblood",
   "scripts": {
     "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
@@ -15,6 +16,7 @@
     "test": "vscode-test"
   },
   "dependencies": {
+    "erlang_js": "^2.0.7",
     "phoenix": "^1.7.18",
     "ws": "^8.18.0"
   },
@@ -41,7 +43,6 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -57,14 +58,16 @@
       "nerves-devtools": [
         {
           "id": "nerves-devtools.devices",
+          "icon": "resources/nerves-logo.png",
           "name": "Devices"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "nerves-devtools.devices",
-        "contents": "No devices found.\n[Add device](command:nerves-devtools.add-device)"
+        "view": "nerves-devtools.devices-welcome",
+        "contents": "No devices found.\n[Add device](command:nerves-devtools.add-device)",
+        "when": "view == nerves-devtools.devices"
       }
     ],
     "menus": {
@@ -83,22 +86,22 @@
       "view/item/context": [
         {
           "command": "nerves-devtools.connect",
-          "when": "view == nerves-devtools.devices && viewItem == closed",
+          "when": "view == nerves-devtools.devices && viewItem == device-closed",
           "group": "inline@1"
         },
         {
           "command": "nerves-devtools.disconnect",
-          "when": "view == nerves-devtools.devices && viewItem != closed",
+          "when": "view == nerves-devtools.devices && viewItem =~ /^device-/ && viewItem != device-closed",
           "group": "inline@1"
         },
         {
           "command": "nerves-devtools.edit-device",
-          "when": "view == nerves-devtools.devices",
+          "when": "view == nerves-devtools.devices && viewItem =~ /^device-/",
           "group": "inline@2"
         },
         {
           "command": "nerves-devtools.delete-device",
-          "when": "view == nerves-devtools.devices",
+          "when": "view == nerves-devtools.devices && viewItem =~ /^device-/",
           "group": "inline@3"
         },
         {
@@ -118,43 +121,43 @@
       {
         "command": "nerves-devtools.run-on-device",
         "title": "Run on device",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.add-device",
         "title": "Add Device",
         "icon": "$(add)",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.edit-device",
         "title": "Edit Device",
         "icon": "$(edit)",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.delete-device",
         "title": "Delete Device",
         "icon": "$(trash)",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.refresh-devices",
         "title": "Refresh",
         "icon": "$(refresh)",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.connect",
         "title": "Connect",
         "icon": "$(vm-connect)",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.disconnect",
         "title": "Disconnect",
         "icon": "$(debug-disconnect)",
-        "category": "Nerves devices"
+        "category": "Nerves Devtools"
       },
       {
         "command": "nerves-devtools.copy",

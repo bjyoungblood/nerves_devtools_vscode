@@ -1,6 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { Disposable, ExtensionContext, window } from "vscode";
+import type { CloseEvent as WsCloseEvent } from "ws";
 
 import { DeviceExport } from "./lib/device";
 import { DeviceManager } from "./lib/device-manager";
@@ -11,11 +12,11 @@ import runOnDevice from "./commands/run-on-device";
 import { registerConnectionCommands } from "./commands/connection";
 import { registerMiscCommands } from "./commands/misc";
 
-import type { CloseEvent as WsCloseEvent } from "ws";
-
 declare module "phoenix" {
   type CloseEvent = WsCloseEvent;
 }
+
+declare module "erlang_js" {}
 
 // TODO: break this function up a bit, move implementations to separate files
 export function activate(context: ExtensionContext) {

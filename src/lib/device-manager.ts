@@ -17,7 +17,7 @@ export class DeviceManager
   constructor(importDevices: DeviceExport[] = []) {
     super({ captureRejections: true });
     for (const device of importDevices) {
-      this.addDevice(device.host, device.label);
+      this.addDevice(device);
     }
   }
 
@@ -49,9 +49,11 @@ export class DeviceManager
     this.emit("change");
   }
 
-  public addDevice(host: string, label?: string | null) {
-    const id = randomUUID();
-    return this.importDevice({ id, host, label });
+  public addDevice(device: Partial<DeviceExport> & { host: string }) {
+    if (!device.host) {
+      throw new Error("Device host is required");
+    }
+    return this.importDevice({ id: randomUUID(), ...device });
   }
 
   public async removeDevice(id: string) {
@@ -65,8 +67,8 @@ export class DeviceManager
     this.emit("change");
   }
 
-  private importDevice({ id, host, label }: DeviceExport) {
-    const device = new Device(id, host, label);
+  private importDevice({ id, host, label, tokenSecret }: DeviceExport) {
+    const device = new Device(id, host, label, tokenSecret);
     this.devices[id] = device;
     device.on("connectionState", () => this.emit("change"));
     device.on("alarms", () => this.emit("change"));

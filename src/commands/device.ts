@@ -30,7 +30,13 @@ export function registerDeviceCommands(
         placeHolder: "My Nerves device",
       });
 
-      deviceManager.addDevice(host, label);
+      const tokenSecret = await window.showInputBox({
+        title: "Auth Token Secret",
+        prompt:
+          "Enter the device's auth token secret (NervesDevServer.token_secret()). Leave blank to disable authentication.",
+      });
+
+      deviceManager.addDevice({ host, label, tokenSecret });
 
       await context.globalState.update(
         "devices",
@@ -70,7 +76,18 @@ export function registerDeviceCommands(
         value: device?.label,
       });
 
-      device.update({ host, label });
+      let tokenSecret: string | null | undefined = await window.showInputBox({
+        title: "Auth Token Secret",
+        prompt:
+          "Enter the device's auth token secret (NervesDevServer.token_secret()). Leave blank to disable authentication.",
+        value: device?.tokenSecret ?? undefined,
+      });
+
+      if (tokenSecret == "") {
+        tokenSecret = null;
+      }
+
+      device.update({ host, label, tokenSecret });
 
       context.globalState.update(
         "devices",

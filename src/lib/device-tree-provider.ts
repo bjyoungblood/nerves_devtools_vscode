@@ -63,9 +63,7 @@ export class DeviceTreeDataProvider
     if (node.nodeType === "device") {
       const device = node.device;
       const treeItem = new TreeItem(device.label);
-      treeItem.contextValue = device.connectionState;
-
-      console.log(">>>>>>", device.label, "is", device.connectionState);
+      treeItem.contextValue = `device-${device.connectionState}`;
 
       if (device.label !== device.host) {
         treeItem.description = device.host;
@@ -128,9 +126,7 @@ export class DeviceTreeDataProvider
   }
 
   getChildren(node?: DeviceTreeNode): DeviceTreeNode[] {
-    const children = this._getChildren(node);
-    console.debug("children for", node, "are", children);
-    return children;
+    return this._getChildren(node);
   }
 
   _getChildren(node?: DeviceTreeNode): DeviceTreeNode[] {

@@ -1,21 +1,45 @@
 import EventEmitter from "events";
+import { URL } from "url";
 import { window } from "vscode";
 import { Socket, Channel, ConnectionState } from "phoenix";
 import { ErrorEvent, WebSocket } from "ws";
 
+import { sign } from "./token-generator";
 import { setTimeoutAsync } from "./util";
 
-export interface LogEvent {
-  time: string;
-  level: string;
-  message: string;
-  metadata: Record<string, any>;
-}
+(Socket as any).prototype.transportConnect = async function () {
+  console.log("transportConnect!");
+  this.connectClock++;
+  this.closeWasClean = false;
+  this.conn = new WebSocket(await this.endPointURL());
+  this.conn.binaryType = this.binaryType;
+  this.conn.timeout = this.longpollerTimeout;
+  this.conn.onopen = () => this.onConnOpen();
+  this.conn.onerror = (error: any) => this.onConnError(error);
+  this.conn.onmessage = (event: any) => this.onConnMessage(event);
+  this.conn.onclose = (event: any) => this.onConnClose(event);
+};
+
+(Socket as any).prototype.endPointURL = async function () {
+  const uri = new URL(this.endPoint);
+  const params = await this.params();
+  console.log(params);
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string") {
+      uri.searchParams.set(key, value);
+    }
+  }
+  uri.searchParams.set("vsn", this.vsn);
+
+  console.log("* endPointURL", uri.toString());
+  return uri.toString();
+};
 
 export interface DeviceExport {
   id: string;
   host: string;
   label?: string | null;
+  tokenSecret?: string | null;
 }
 
 export interface TelemetryData {
@@ -44,16 +68,15 @@ interface DeviceEventEmitterEvents {
   telemetry: [Device, TelemetryData];
   connectionState: [Device, ConnectionState | "error"];
   dirtyModules: [Device, string[]];
-  log: [Device, LogEvent];
 }
 
 export class Device extends EventEmitter<DeviceEventEmitterEvents> {
   private socket: Socket;
   private codeChannel: Channel | null = null;
-  private logChannel: Channel | null = null;
   private telemetryChannel: Channel | null = null;
 
   private _label: string;
+  private _tokenSecret: string | null = null;
   private _connectError: boolean = false;
 
   private _alarms: string[] = [];
@@ -65,10 +88,12 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
     private readonly _id: string,
     private _host: string,
     label?: string | null,
+    tokenSecret?: string | null,
   ) {
     super({ captureRejections: true });
 
     this._label = label || this._host;
+    this._tokenSecret = tokenSecret || null;
 
     this.socket = this.configureSocket();
   }
@@ -91,6 +116,10 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
 
   public get label() {
     return this._label;
+  }
+
+  public get tokenSecret() {
+    return this._tokenSecret;
   }
 
   public get connected() {
@@ -118,6 +147,7 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
       id: this._id,
       host: this._host,
       label: this._label,
+      tokenSecret: this._tokenSecret,
     };
   }
 
@@ -188,9 +218,14 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
     });
   }
 
-  public async update({ host, label }: { host?: string; label?: string }) {
+  public async update({
+    host,
+    label,
+    tokenSecret,
+  }: Omit<Partial<DeviceExport>, "id">) {
     if (host) this._host = host;
     if (label) this._label = label;
+    if (typeof tokenSecret !== "undefined") this._tokenSecret = tokenSecret;
 
     const reconnect = this.connectionState !== "closed";
     await this.disconnect();
@@ -234,11 +269,15 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
     this._metadata = null;
     this._telemetry = null;
     this._dirtyModules = [];
+    this._connectError = false;
   }
 
   private configureSocket() {
     const socket = new Socket(`http://${this._host}`, {
       transport: WebSocket,
+      params: async () => ({
+        token: await this.authToken(),
+      }),
     });
 
     socket.onOpen(() => {
@@ -257,13 +296,6 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
     this.codeChannel.join().receive("ok", this.afterJoin.bind(this, "code"));
     this.codeChannel.on("dirty_modules", this.handleDirtyModules.bind(this));
 
-    // this.logChannel = socket.channel("logs", {});
-    // this.logChannel.join();
-    // this.logChannel.on("log", (message: LogEvent) => {
-    //   console.log("log event", message);
-    //   this.emit("log", this, message);
-    // });
-
     this.telemetryChannel = socket.channel("telemetry", {});
     this.telemetryChannel
       .join()
@@ -272,5 +304,16 @@ export class Device extends EventEmitter<DeviceEventEmitterEvents> {
     this.telemetryChannel.on("alarms", this.handleAlarms.bind(this));
 
     return socket;
+  }
+
+  private async authToken() {
+    console.log(this._tokenSecret);
+    const secret = this._tokenSecret;
+    if (!secret) {
+      return null;
+    }
+    const t = await sign(secret, "user socket", "", "sha256");
+    console.log("token", t);
+    return t;
   }
 }
