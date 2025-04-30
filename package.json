@@ -1,6 +1,7 @@
 {
   "name": "nerves-devtools-vscode",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "icon": "resources/nerves-logo-color.png",
   "displayName": "Nerves Devtools",
   "description": "Utilities for working with Nerves projects and devices in VS Code",
   "packageManager": "yarn@1.22.22",
@@ -50,7 +51,7 @@
         {
           "id": "nerves-devtools",
           "title": "Nerves Devtools",
-          "icon": "resources/nerves-logo.png"
+          "icon": "resources/nerves-logo-white.png"
         }
       ]
     },
@@ -58,7 +59,7 @@
       "nerves-devtools": [
         {
           "id": "nerves-devtools.devices",
-          "icon": "resources/nerves-logo.png",
+          "icon": "resources/nerves-logo-white.png",
           "name": "Devices"
         }
       ]
