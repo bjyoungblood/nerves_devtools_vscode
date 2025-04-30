@@ -21,4 +21,4 @@ or similar, the module will fail to compile.
 
 [Nerves Devtools]: https://github.com/bjyoungblood/nerves_devtools_vscode
 [Nerves]: https://nerves-project.org/
-[Nerves Dev Server]: https://github.com/bjyoungblood/nerves-dev-server
+[Nerves Dev Server]: https://github.com/bjyoungblood/nerves_dev_server

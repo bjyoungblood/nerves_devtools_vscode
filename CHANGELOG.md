@@ -4,6 +4,10 @@ All notable changes to the "Nerves Devtools" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [v0.1.1]
+
+- Add logo to extension manifest
+
+## [v0.1.0]
 
 - Initial release
