@@ -19,6 +19,6 @@ To upload and compile an Elixir source file on a device, run
 available on the device, so if the module body contains any calls to `Mix.env()`
 or similar, the module will fail to compile.
 
-[Nerves Devtools]: https://github.com/bjyoungblood/vscode-nerves-devtools
+[Nerves Devtools]: https://github.com/bjyoungblood/nerves_devtools_vscode
 [Nerves]: https://nerves-project.org/
 [Nerves Dev Server]: https://github.com/bjyoungblood/nerves-dev-server

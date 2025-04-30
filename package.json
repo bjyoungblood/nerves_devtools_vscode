@@ -5,7 +5,7 @@
   "displayName": "Nerves Devtools",
   "description": "Utilities for working with Nerves projects and devices in VS Code",
   "packageManager": "yarn@1.22.22",
-  "repository": "github:bjyoungblood/vscode-nerves-devtools",
+  "repository": "github:bjyoungblood/nerves_devtools_vscode",
   "license": "Apache-2.0",
   "publisher": "bjyoungblood",
   "scripts": {
