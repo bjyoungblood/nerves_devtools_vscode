@@ -9,3 +9,6 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+.yarnrc.yml
+.tool-versions
+eslint.config.mjs
