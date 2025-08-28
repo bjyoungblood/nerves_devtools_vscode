@@ -19,6 +19,7 @@
   "dependencies": {
     "erlang_js": "^2.0.7",
     "phoenix": "^1.7.18",
+    "ssh2": "^1.16.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -26,6 +27,7 @@
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
     "@types/phoenix": "^1.6.6",
+    "@types/ssh2": "^1.15.5",
     "@types/vscode": "^1.88.0",
     "@types/ws": "^8.5.13",
     "@vscode/test-cli": "^0.0.8",
