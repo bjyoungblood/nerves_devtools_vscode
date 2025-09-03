@@ -16,8 +16,8 @@ export function registerDeviceCommands(
     async () => {
       const host = await window.showInputBox({
         title: "Device hostname/IP and port",
-        placeHolder: "nerves.local:4000",
-        prompt: "Enter the device's IP or hostname and Nerves Dev Server port.",
+        placeHolder: "nerves.local[:22]",
+        prompt: "Enter the device's IP or hostname and optional SSH port.",
         validateInput: validateHostAndPort,
       });
 
@@ -30,13 +30,7 @@ export function registerDeviceCommands(
         placeHolder: "My Nerves device",
       });
 
-      const tokenSecret = await window.showInputBox({
-        title: "Auth Token Secret",
-        prompt:
-          "Enter the device's auth token secret (NervesDevServer.token_secret()). Leave blank to disable authentication.",
-      });
-
-      deviceManager.addDevice({ host, label, tokenSecret });
+      deviceManager.addDevice({ host, label });
 
       await context.globalState.update(
         "devices",
@@ -61,7 +55,7 @@ export function registerDeviceCommands(
       const host = await window.showInputBox({
         title: "Device hostname/IP and port",
         placeHolder: "nerves.local:4000",
-        prompt: "Enter the device's IP or hostname and Nerves Dev Server port.",
+        prompt: "Enter the device's IP or hostname and optional port.",
         value: device?.host,
         validateInput: validateHostAndPort,
       });
@@ -76,18 +70,7 @@ export function registerDeviceCommands(
         value: device?.label,
       });
 
-      let tokenSecret: string | null | undefined = await window.showInputBox({
-        title: "Auth Token Secret",
-        prompt:
-          "Enter the device's auth token secret (NervesDevServer.token_secret()). Leave blank to disable authentication.",
-        value: device?.tokenSecret ?? undefined,
-      });
-
-      if (tokenSecret == "") {
-        tokenSecret = null;
-      }
-
-      device.update({ host, label, tokenSecret });
+      device.update({ host, label });
 
       context.globalState.update(
         "devices",
@@ -126,5 +109,18 @@ export function registerDeviceCommands(
     },
   );
 
-  return [add, edit, del, qp];
+  const select = commands.registerCommand(
+    "nerves-devtools.select-device",
+    async () => {
+      const deviceId = await pickDevice(deviceManager);
+      if (!deviceId) {
+        return;
+      }
+
+      deviceManager.setSelectedDevice(deviceId);
+      return deviceManager.getSelectedDevice();
+    },
+  );
+
+  return [add, edit, del, qp, select];
 }

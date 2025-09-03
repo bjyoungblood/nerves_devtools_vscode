@@ -18,6 +18,8 @@ export async function pickDevice(
     };
   });
 
+  qp.title = "Select a device";
+
   qp.items = quickPickItems;
   qp.activeItems = quickPickItems.filter(
     (item) => item.id === preselectedDeviceId,

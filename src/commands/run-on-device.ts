@@ -1,6 +1,3 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-
 import { stripVTControlCharacters } from "node:util";
 import {
   ExtensionContext,
@@ -8,14 +5,13 @@ import {
   ProgressLocation,
   QuickPick,
   QuickPickItem,
-  TextEditor,
   commands,
   window,
   workspace,
 } from "vscode";
 
 import { DeviceManager } from "../lib/device-manager";
-import { pickDevice } from "../lib/pick-device";
+// import { pickDevice } from "../lib/pick-device";
 
 interface DeviceQuickPickItem extends QuickPickItem {
   id: string;
@@ -26,37 +22,30 @@ let qp: QuickPick<DeviceQuickPickItem>;
 
 async function runOnDevice(
   context: ExtensionContext,
-  editor: TextEditor,
   deviceManager: DeviceManager,
 ) {
-  out.clear();
+  const document = window.activeTextEditor?.document;
 
-  window.visibleTextEditors.find((v) => v.document.fileName === out.name);
-
-  if (editor.document.languageId !== "elixir") {
+  if (document?.languageId !== "elixir") {
     window.showErrorMessage("This command only works with Elixir source files");
     return;
   }
 
-  const lastHost = context.workspaceState.get<string>("lastHost");
-  const deviceId = await pickDevice(deviceManager, lastHost);
-  if (!deviceId) {
-    return;
+  let device = deviceManager.getSelectedDevice();
+  if (!device) {
+    device = await commands.executeCommand("nerves-devtools.select-device");
   }
 
-  const device = deviceManager.getDevice(deviceId);
   if (!device) {
     return;
   }
 
-  context.workspaceState.update("lastHost", deviceId);
-
   let editorFileName: string | null = null;
-  if (!editor.document.isUntitled) {
-    editorFileName = workspace.asRelativePath(editor.document.uri);
+  if (!document.isUntitled) {
+    editorFileName = workspace.asRelativePath(document.uri);
   }
 
-  const code = editor.document.getText();
+  const code = document.getText();
 
   window.withProgress(
     {
@@ -64,8 +53,8 @@ async function runOnDevice(
       title: `Connecting to ${device.label}...`,
     },
     async (notification) => {
+      out.clear();
       try {
-        const device = deviceManager.getDevice(deviceId)!;
         if (!device.connected) {
           out.append(`Connecting to ${device.label}...`);
           try {
@@ -76,17 +65,18 @@ async function runOnDevice(
             console.error(err);
             return;
           }
-        } else {
-          out.appendLine(`Already connected to ${device.label}`);
         }
 
-        out.appendLine(`Uploading ${editorFileName} to ${device.label}...`);
+        out.appendLine(`Compiling ${editorFileName} on ${device.label}...`);
         notification.report({
           message: `Compiling ${editorFileName} on ${device.label}...`,
           increment: 50,
         });
 
-        const { status, diagnostics } = await device.compileCode(code);
+        const { status, diagnostics } = await device.compileCode(
+          code,
+          editorFileName ?? undefined,
+        );
 
         if (status === "ok") {
           out.appendLine(`Compilation successful!`);
@@ -97,6 +87,7 @@ async function runOnDevice(
           );
         } else {
           out.appendLine(`Compilation failed!`);
+          out.appendLine("");
           showMessage(
             "error",
             `${editorFileName} failed to compile on ${device.label}. See output for diagnostics.`,
@@ -104,7 +95,7 @@ async function runOnDevice(
         }
 
         if (Array.isArray(diagnostics)) {
-          out.show();
+          out.show(true);
           diagnostics.forEach((line) =>
             out.appendLine(stripVTControlCharacters(line)),
           );
@@ -152,9 +143,8 @@ export default function register(
   qp.canSelectMany = false;
   qp.title = "Enter Nerves device hostname or IP";
 
-  const cmd = commands.registerTextEditorCommand(
-    "nerves-devtools.run-on-device",
-    (textEditor) => runOnDevice(context, textEditor, deviceManager),
+  const cmd = commands.registerCommand("nerves-devtools.run-on-device", () =>
+    runOnDevice(context, deviceManager),
   );
 
   return [out, qp, cmd];

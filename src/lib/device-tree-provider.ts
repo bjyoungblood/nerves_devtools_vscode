@@ -98,9 +98,6 @@ export class DeviceTreeDataProvider
       return treeItem;
     } else if (node.nodeType === "deviceSubitem") {
       treeItem = new TreeItem(node.label);
-      if (node.label.startsWith("Alarms") && node.device.alarms.length > 0) {
-        treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-      }
       if (
         ["Metadata", "Telemetry"].includes(node.label) ||
         node.label.startsWith("Dirty Modules")
@@ -157,11 +154,6 @@ export class DeviceTreeDataProvider
 
   private getDeviceChildren(node: DeviceNode): DeviceTreeNode[] {
     return [
-      {
-        nodeType: `deviceSubitem`,
-        label: `Alarms (${node.device.alarms.length})`,
-        device: node.device,
-      },
       node.device.metadata
         ? {
             nodeType: `deviceSubitem`,
@@ -176,24 +168,10 @@ export class DeviceTreeDataProvider
             device: node.device,
           }
         : null,
-      node.device.dirtyModules.length > 0
-        ? {
-            nodeType: "deviceSubitem",
-            label: `Dirty Modules (${node.device.dirtyModules.length})`,
-            device: node.device,
-          }
-        : null,
     ].filter((v) => v !== null) as DeviceSubitemNode[];
   }
 
   private getSubitemChildren(node: DeviceSubitemNode): DeviceTreeNode[] {
-    if (node.label.startsWith("Alarms")) {
-      return node.device.alarms.map((alarm) => ({
-        nodeType: "alarm",
-        label: alarm,
-      }));
-    }
-
     if (node.label.startsWith("Metadata")) {
       return [
         ["Active partition", `${node.device.metadata?.activePartition}`],
@@ -226,13 +204,6 @@ export class DeviceTreeDataProvider
       ]
         .filter((v) => v !== null)
         .map((label) => ({ nodeType: "telemetry", label }));
-    }
-
-    if (node.label.startsWith("Dirty Modules")) {
-      return node.device.dirtyModules.map((module) => ({
-        nodeType: "metadata",
-        value: module,
-      }));
     }
 
     return [];
