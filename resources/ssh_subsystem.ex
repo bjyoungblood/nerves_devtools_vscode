@@ -110,7 +110,7 @@ defmodule NervesDevtools.Subsystem do
   end
 
   defp decode_command(data) do
-    case JSON.decode(data) do
+    case json_module().decode(data) do
       {:ok, %{"requestId" => request_id, "cmd" => cmd, "payload" => payload}} ->
         {:ok, request_id, cmd, payload}
 
@@ -220,7 +220,15 @@ defmodule NervesDevtools.Subsystem do
 
   defp send_data(state, map) when is_map(map) do
     Logger.info("Sending response: #{inspect(map)}")
-    :ssh_connection.send(state.cm, state.id, JSON.encode_to_iodata!(map))
+    :ssh_connection.send(state.cm, state.id, json_module().encode_to_iodata!(map))
+  end
+
+  defp json_module() do
+    cond do
+      Code.ensure_loaded?(JSON) -> JSON
+      Code.ensure_loaded?(Jason) -> Jason
+      Code.ensure_loaded?(Poison) -> Poison
+    end
   end
 
   # https://github.com/nerves-project/nerves_motd/blob/a93b91a35c4bbb88c755d558776a314b2811e5d2/lib/nerves_motd.ex#L243
