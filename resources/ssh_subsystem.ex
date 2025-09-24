@@ -9,7 +9,7 @@ defmodule NervesDevtools.Subsystem do
   @impl :ssh_client_channel
   @spec init(any()) :: {:ok, %{cm: nil, id: nil, telemetry_interval: pos_integer()}}
   def init(version) do
-    Logger.debug("Client connected")
+    Logger.debug("[nerves_devtools] Client connected")
 
     {:ok, %{id: nil, cm: nil, telemetry_interval: @default_telemetry_interval, version: version}}
   end
@@ -27,15 +27,11 @@ defmodule NervesDevtools.Subsystem do
   end
 
   def handle_msg(message, state) do
-    Logger.debug("Ignoring message #{inspect(message)}")
-
     {:ok, state}
   end
 
   @impl :ssh_client_channel
   def handle_ssh_msg({:ssh_cm, _cm, {:data, _channel_id, 0, data}}, state) do
-    Logger.info("Incoming: #{inspect(data)}")
-
     case decode_command(data) do
       {:ok, request_id, cmd, payload} ->
         {status, result} = handle_command(cmd, payload)
@@ -53,14 +49,13 @@ defmodule NervesDevtools.Subsystem do
     end
   rescue
     err ->
-      Logger.error("Failed to handle command: #{inspect(err)}")
+      Logger.error("[nerves_devtools] Failed to handle command: #{inspect(err)}")
       send_data(state, %{"status" => :error, "result" => "Internal error"})
       {:ok, state}
   end
 
+  # Ignore stderr
   def handle_ssh_msg({:ssh_cm, _cm, {:data, _channel_id, 1, data}}, state) do
-    # Ignore stderr
-    Logger.info("stderr: #{inspect(data)}")
     {:ok, state}
   end
 
@@ -74,17 +69,14 @@ defmodule NervesDevtools.Subsystem do
   end
 
   def handle_ssh_msg({:ssh_cm, _cm, {:exit_signal, _channel_id, _, _error, _}} = msg, state) do
-    Logger.info("handle_ssh_msg: #{inspect(msg, pretty: true)}")
     {:stop, :normal, state}
   end
 
   def handle_ssh_msg({:ssh_cm, _cm, {:exit_status, _channel_id, _status}} = msg, state) do
-    Logger.info("handle_ssh_msg: #{inspect(msg, pretty: true)}")
     {:stop, :normal, state}
   end
 
   def handle_ssh_msg({:ssh_cm, _cm, message}, state) do
-    Logger.debug("Ignoring handle_ssh_msg #{inspect(message)}")
     {:ok, state}
   end
 
@@ -100,7 +92,6 @@ defmodule NervesDevtools.Subsystem do
 
   @impl :ssh_client_channel
   def terminate(_reason, _state) do
-    Logger.debug("Client disconnected")
     :ok
   end
 
@@ -115,16 +106,13 @@ defmodule NervesDevtools.Subsystem do
         {:ok, request_id, cmd, payload}
 
       {:ok, v} ->
-        Logger.warning("Invalid request: #{inspect(v)}")
+        Logger.warning("[nerves_devtools] Invalid request: #{inspect(v)}")
         {:error, :invalid_command, Map.get(v, "requestId", nil)}
 
       {:error, _} ->
-        Logger.warning("Failed to decode command: #{inspect(data)}")
+        Logger.warning("[nerves_devtools] Failed to decode command: #{inspect(data)}")
         {:error, :invalid_json, nil}
     end
-  end
-
-  defp handle_command("version", _payload) do
   end
 
   defp handle_command("compile_code", %{"code" => code_to_compile} = payload) do
@@ -158,7 +146,10 @@ defmodule NervesDevtools.Subsystem do
   end
 
   defp handle_command(cmd, payload) do
-    Logger.warning("Unknown command or invalid payload: #{inspect(cmd)}, #{inspect(payload)}")
+    Logger.warning(
+      "[nerves_devtools] Unknown command or invalid payload: #{inspect(cmd)}, #{inspect(payload)}"
+    )
+
     {:error, :unknown_command}
   end
 
@@ -219,7 +210,6 @@ defmodule NervesDevtools.Subsystem do
   end
 
   defp send_data(state, map) when is_map(map) do
-    Logger.info("Sending response: #{inspect(map)}")
     :ssh_connection.send(state.cm, state.id, json_module().encode_to_iodata!(map))
   end
 
