@@ -4,6 +4,11 @@ All notable changes to the "Nerves Devtools" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [v0.2.2]
+
+- Clean up logging in ssh subsystem
+- Activate extension when editing Elixir code
+
 ## [v0.2.1]
 
 - Support Jason and Poison in case JSON is not available

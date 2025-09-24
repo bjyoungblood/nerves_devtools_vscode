@@ -1,12 +1,16 @@
 {
   "name": "nerves-devtools-vscode",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "icon": "resources/nerves-logo-color.png",
   "displayName": "Nerves Devtools",
   "description": "Utilities for working with Nerves projects and devices in VS Code",
   "repository": "github:bjyoungblood/nerves_devtools_vscode",
   "license": "Apache-2.0",
   "publisher": "bjyoungblood",
+  "keywords": [
+    "nerves",
+    "elixir"
+  ],
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
