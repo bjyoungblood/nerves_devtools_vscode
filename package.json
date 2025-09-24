@@ -40,6 +40,9 @@
     "Other"
   ],
   "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:elixir"
+  ],
   "contributes": {
     "icons": {
       "nerves-devtools": {
